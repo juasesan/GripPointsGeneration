@@ -1,47 +1,66 @@
 import pyrealsense2 as rs
 import numpy as np
-import matplotlib.pyplot as plt
 import cv2
+import pandas as pd
+from matplotlib import pyplot as plt
+from sklearn.cluster import AgglomerativeClustering
+import seaborn as sns
+
 
 # Configure depth and color streams
 pipeline = rs.pipeline()
 config = rs.config()
-config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+
+config.enable_stream(rs.stream.depth, 320, 240, rs.format.z16, 30)
 config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 
 
+aligned_stream = rs.align(rs.stream.color) # alignment between color and depth
+point_cloud = rs.pointcloud()
+
 # Start streaming
-pipeline.start(config)
+profile = pipeline.start(config)
 
-try:
+def take_picture():
+    frames = pipeline.wait_for_frames()
+    depth_frame = frames.get_depth_frame()
+    color_frame = frames.get_color_frame()
+
+    # Convert images to numpy arrays
+    depth_image = np.asanyarray(depth_frame.get_data())
+    color_image = np.asanyarray(color_frame.get_data())
+    color_image = cv2.resize(color_image, dsize=(depth_image.shape[1], depth_image.shape[0]), interpolation=cv2.INTER_AREA)
+
+    return depth_image, color_image
+
+
+def get_points(color, depth=None):
+    _,thresh2 = cv2.threshold(color,100,255,cv2.THRESH_BINARY_INV)
+    
+    points = np.transpose(np.nonzero(thresh2))
+    
+    clustering = AgglomerativeClustering(n_clusters=40, linkage="average")
+    clustering.fit(points)
+
+    df = pd.DataFrame(points)
+    df['cluster'] = clustering.labels_
+    df.columns = ['Y', 'X', 'clusters']
+    df['Y'] = df['Y'] * (-1)
+
+    dfg = df.groupby('clusters').agg({'X':[np.mean], 'Y':[np.mean]}).reset_index()
+    dfg.columns = ['cluster', 'X_cent', 'Y_cent']
+
+    return dfg
+
+
+def main():
+    
     while True:
-        input("Press Enter to continue...")
+        input("Press any key to continue..")
 
-        # Wait for a coherent pair of frames: depth and color
-        frames = pipeline.wait_for_frames()
-        depth_frame = frames.get_depth_frame()
-        color_frame = frames.get_color_frame()
-
-        # Convert images to numpy arrays
-        depth_image = np.asanyarray(depth_frame.get_data())
-        color_image = np.asanyarray(color_frame.get_data())
-
-        # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
-        depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
-
-        depth_colormap_dim = depth_colormap.shape
-        color_colormap_dim = color_image.shape
-
-        # If depth and color resolutions are different, resize color image to match depth image for display
-        resized_color_image = cv2.resize(color_image, dsize=(depth_colormap_dim[1], depth_colormap_dim[0]), interpolation=cv2.INTER_AREA)
-
-        img = cv2.cvtColor(resized_color_image, cv2.COLOR_BGR2GRAY)
-        img = cv2.resize(img, (400, 400))
+        depth_img, color_img = take_picture()
         
-        plt.subplots(figsize=(10,8)),plt.imshow(img, 'gray', vmin=0, vmax=255)
-        plt.show()
+        wire_points = get_points(color_img, depth_img)  
+        print(wire_points)
 
-finally:
-
-    # Stop streaming
-    pipeline.stop()
+        
