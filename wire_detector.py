@@ -3,11 +3,12 @@ import cv2 as cv
 import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.cluster import AgglomerativeClustering
+from sklearn.neighbors import kneighbors_graph
 import seaborn as sns
 import pyrealsense2 as rs
 
 
-img = cv.imread('E:/Github projects/wire_harness_segmentation/Data/sample images/3.jpg')
+img = cv.imread('./Data/sample images/3.jpg')
 img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 img = cv.resize(img, (400, 400))
 
@@ -21,7 +22,8 @@ plt.show()
 
 points = np.transpose(np.nonzero(thresh2))
 
-clustering = AgglomerativeClustering(n_clusters=40, linkage="average")
+knn_graph = kneighbors_graph(points, 30, include_self=False)
+clustering = AgglomerativeClustering(n_clusters=30, linkage="ward", connectivity=knn_graph)
 clustering.fit(points)
 
 df = pd.DataFrame(points)

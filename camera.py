@@ -7,7 +7,7 @@ from sklearn.cluster import AgglomerativeClustering
 import seaborn as sns
 
 
-# Configure depth and color streams
+# Configure depth and color streams of the camera
 pipeline = rs.pipeline()
 config = rs.config()
 
@@ -48,19 +48,22 @@ def get_points(color, depth=None):
     df['Y'] = df['Y'] * (-1)
 
     dfg = df.groupby('clusters').agg({'X':[np.mean], 'Y':[np.mean]}).reset_index()
-    dfg.columns = ['cluster', 'X_cent', 'Y_cent']
+    dfg.columns = ['cluster', 'X', 'Y']
+    dfg['Z'] = 0.0
 
     return dfg
 
 
 def main():
+    depth_img, color_img = take_picture()
     
-    while True:
-        input("Press any key to continue..")
+    wire_points = get_points(color_img)
 
-        depth_img, color_img = take_picture()
-        
-        wire_points = get_points(color_img, depth_img)  
-        print(wire_points)
+    print(wire_points)
+    wire_points.to_csv('./points_xyz.csv')
+
+
+if __name__ == '__main__':
+    main()
 
         
