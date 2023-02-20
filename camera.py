@@ -1,31 +1,31 @@
 import pyrealsense2 as rs
 import numpy as np
+import rospy
 import cv2
 import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import kneighbors_graph
-import seaborn as sns
 import math
-import time
+import seaborn as sns
 
-start = time.time()
+
+# Configure depth and color streams of the camera
+pipeline = rs.pipeline()
+config = rs.config()
+
+config.enable_stream(rs.stream.depth, 320, 240, rs.format.z16, 30)
+config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
+
+
+aligned_stream = rs.align(rs.stream.color) # alignment between color and depth
+point_cloud = rs.pointcloud()
+#blob_pub  = rospy.Publisher("/connector/position_connector",Point,queue_size=1)
+
+# Start streaming
+profile = pipeline.start(config)
 
 def take_picture():
-    # Configure depth and color streams of the camera
-    pipeline = rs.pipeline()
-    config = rs.config()
-
-    config.enable_stream(rs.stream.depth, 320, 240, rs.format.z16, 30)
-    config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
-
-
-    aligned_stream = rs.align(rs.stream.color) # alignment between color and depth
-    point_cloud = rs.pointcloud()
-
-    # Start streaming
-    profile = pipeline.start(config)
-    
     frames = pipeline.wait_for_frames()
     depth_frame = frames.get_depth_frame()
     color_frame = frames.get_color_frame()
@@ -39,14 +39,16 @@ def take_picture():
 
 
 def get_points(color, depth=None):
+    # Image pre-procesing
     color = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
     color = cv2.resize(color, (320, 240))
-    _,thresh2 = cv2.threshold(color,100,255,cv2.THRESH_BINARY_INV)
+    _,thresh2 = cv2.threshold(color,50,255,cv2.THRESH_BINARY_INV)
     
     points = np.transpose(np.nonzero(thresh2))
     
-    knn_graph = kneighbors_graph(points, 100, include_self=False)
-    clustering = AgglomerativeClustering(n_clusters=100, linkage="ward", connectivity=knn_graph)
+    # Clustering
+    knn_graph = kneighbors_graph(points, 40, include_self=False)
+    clustering = AgglomerativeClustering(n_clusters=40, linkage="ward", connectivity=knn_graph)
     clustering.fit(points)
 
     df = pd.DataFrame(points)
@@ -54,29 +56,27 @@ def get_points(color, depth=None):
     df.columns = ['Y', 'X', 'clusters']
     df['Y'] = df['Y'] * (-1)
 
+    # Cable centroid points calculation
     cluster_df = df.groupby('clusters').agg({'X':[np.mean], 'Y':[np.mean]}).reset_index()
     cluster_df.columns = ['cluster', 'X', 'Y']
-    cluster_df['X'] = cluster_df['X'] / 400.0
-    cluster_df['Y'] = (cluster_df['Y'] + 400.0) / 400.0
-    cluster_df['Z'] = 0.0
 
     points_list = list(cluster_df[['X', 'Y']].itertuples(index=False, name=None))
 
     for i in range(len(points_list)):       # Rounds each centroid point to the nearest point on its cluster
-        cluster_df = df.loc[df['clusters'] == i]
-        cluster_list = list(cluster_df[['X', 'Y']].itertuples(index=False, name=None))
+        cluster = df.loc[df['clusters'] == i]
+        cluster_list = list(cluster[['X', 'Y']].itertuples(index=False, name=None))
         dist_list = []
         for pt in cluster_list:
             dist_list.append(math.dist(points_list[i], pt))
         idx = dist_list.index(min(dist_list))
         points_list[i] = cluster_list[idx]
 
+
     list_sorted = [points_list[0]]
     points_list.remove(points_list[0])
-    node_points = []
     
+    # Sorting of the points to get the boundaries firts
     flag = True
-
     while flag:
         point1 = list_sorted[-1]
         distances = []
@@ -131,22 +131,33 @@ def get_points(color, depth=None):
     
     df_points = pd.DataFrame(list_sorted2, columns=['X', 'Y'])
 
+    # Coorditanes frame conversion, from camera frame to robot frame.
+    center_x, center_y = 0.44, 0.9307   # Relative frame center
+    
+    df_points['Y'] = df_points['Y'] + 240.0
+    df_points['Y'] = ((df_points['Y'] * 0.44) / 240) 
+    df_points['Y'] = df_points['Y'] - center_y
+    df_points['X'] = ((df_points['X'] * 0.82)/320)
+    
+    df_points['Z'] = 0.0
+
     return df_points
 
 
 def main():
-    #depth_img, color_img = take_picture()
+    depth_img, color_img = take_picture()
     
-    #wire_points = get_points(color_img)
-    img = cv2.imread('./Data/sample images/1.jpg')
-    wire_points = get_points(img)
-
+    wire_points = get_points(color_img)
+    print("inicio")
     print(wire_points)
-    #wire_points.to_csv('./points_xyz.csv')
+    fig,ax = plt.subplots(figsize=(15,15))
+    plt.xlim(0, 320)
+    plt.ylim(0, 240)
+    sns.scatterplot(data=wire_points, x='X', y='Y', ax=ax)
+    ax.imshow(color_img)
+    plt.show()
+    wire_points.to_csv('points_xyz.csv')
+
 
 if __name__ == '__main__':
     main()
-    end = time.time()
-    print(end - start)
-
-        
