@@ -1,2 +1,5 @@
-# wire_harness_segmentation
-Segmentation of automotive wire harness with Deep Learning.
+# Paper: Grip points generation on motorcycle wire harnesses main branch based on computer vision and clustering
+
+## Abstract
+The automotive industry has come a long way in automating vehicle assembly processes, yet the automation of electrical wiring still presents a considerable challenge. Due to their complex and non-linear nature, wires prove difficult to automate their manipulation. In this paper, we propose a solution that utilizes a cable recognition system powered by computer vision and unsupervised machine learning (clustering).
+By treating each pixel of the cable as a point in Cartesian space and grouping them, we can obtain a trajectory and build a precise map of the cable. With this knowledge, handlers can identify and manage their main branch from any point on the cable, which is critical when manipulating and routing wire harnesses. Our proposed solution enables us to leverage the high precision and repeatability of industrial robots, making it possible to automate even the most challenging aspect of vehicle assembly.
